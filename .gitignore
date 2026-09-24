@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Environment files
+.env
+
+# Local Statcast caches / development databases
+statcast_cache/
+statcast_database/
+
+# Development notebooks
+velocity copy.ipynb
+velocity.ipynb
+pitch_analysis.ipynb
