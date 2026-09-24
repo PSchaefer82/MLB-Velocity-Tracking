@@ -28,11 +28,10 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("MLB Pitching Analytics")
+st.title("MLB Pitching Analysis Database")
 
 st.caption(
-    "Pitch-level Statcast analysis across seasons, "
-    "games, and innings."
+    " Portfolio Project Fall 2026 - Paul Schaefer"
 )
 
 st.divider()
@@ -914,7 +913,7 @@ elif analysis_mode == "Game Analysis":
         pitcher_df["game_pk"]
         == selected_game_pk
     ].copy()
-    
+
     # --------------------------------------
     # OVERALL PITCH NUMBER FOR GAME
     # --------------------------------------
