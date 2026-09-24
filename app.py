@@ -379,11 +379,11 @@ def load_pitcher_data(
 # ==========================================
 
 st.sidebar.title(
-    "Analysis Controls"
+    "Player Selection"
 )
 
 st.sidebar.subheader(
-    "Pitcher"
+    "Pitchers"
 )
 
 first_name = st.sidebar.text_input(
@@ -408,9 +408,6 @@ season = st.sidebar.selectbox(
 )
 st.sidebar.divider()
 
-st.sidebar.subheader(
-    "Analysis"
-)
 analysis_mode = st.sidebar.radio(
     "View",
     [
@@ -519,8 +516,8 @@ pitcher_df = (
 if pitcher_df is None:
 
     st.info(
-        "Select a pitcher and season, "
-        "then choose **Load Pitcher**."
+        "Select a season, "
+        "or specific game, and **Load Pitcher**."
     )
 
     st.stop()
