@@ -395,7 +395,14 @@ last_name = st.sidebar.text_input(
     "Last Name",
     value=""
 )
-
+mlb_player_id = st.sidebar.text_input(
+    "MLB Player ID (optional)",
+    value="",
+    help=(
+        "Enter an MLBAM player ID to bypass "
+        "the player-name lookup."
+    )
+)
 season = st.sidebar.selectbox(
     "Season",
     options=[
@@ -412,10 +419,10 @@ analysis_mode = st.sidebar.radio(
     "View",
     [
         "Season Trends",
-        "Game Analysis"
+        "Game Analysis",
+        "Game vs Season Baseline"
     ]
 )
-
 
 # ==========================================
 # LOAD BUTTON
@@ -456,11 +463,22 @@ if "loaded_season" not in st.session_state:
 if load_player:
 
     try:
+        if mlb_player_id.strip():
 
-        player_id = lookup_statcast_id(
-            first_name.strip(),
-            last_name.strip()
-        )
+            if not mlb_player_id.strip().isdigit():
+                raise ValueError(
+                    "MLB Player ID must contain only numbers."
+                )
+
+            player_id = int(mlb_player_id.strip())
+
+        else:
+
+            player_id = lookup_statcast_id(
+                first_name.strip(),
+                last_name.strip()
+            )
+
 
         update_pitcher_database(
             player_id,
@@ -549,7 +567,7 @@ latest_data_display = (
 )
 
 st.caption(
-    f"{loaded_season} Statcast data "
+    f"{loaded_season}"
     f"• Data through {latest_data_display}"
 )
 
@@ -1478,3 +1496,477 @@ elif analysis_mode == "Game Analysis":
             use_container_width=True,
             hide_index=True
         )
+
+# ==========================================
+# GAME VS SEASON BASELINE
+# ==========================================
+
+elif analysis_mode == "Game vs Season Baseline":
+
+    st.subheader("Game vs Season Baseline")
+
+    st.caption(
+        f"Compare the {pitch_name} characteristics "
+        f"against {player_name}'s {loaded_season} season average."
+    )
+
+    # --------------------------------------
+    # CALCULATE SEASON BASELINE
+    # --------------------------------------
+
+    season_baseline = {
+        "velocity": selected_pitch_df[
+            "release_speed"
+        ].mean(),
+
+        "spin_rate": selected_pitch_df[
+            "release_spin_rate"
+        ].mean(),
+
+        "extension": selected_pitch_df[
+            "release_extension"
+        ].mean(),
+
+        # Statcast movement values are stored
+        # in feet. Convert to inches.
+        "horizontal_break": (
+            selected_pitch_df["pfx_x"].mean() * 12
+        ),
+
+        "vertical_break": (
+            selected_pitch_df["pfx_z"].mean() * 12
+        )
+    }
+
+    # --------------------------------------
+    # GAME-LEVEL BASELINE DISTRIBUTION
+    # --------------------------------------
+
+    game_level_summary = (
+        selected_pitch_df
+        .groupby(
+            ["game_pk", "game_date"]
+        )
+        .agg(
+            velocity=(
+                "release_speed",
+                "mean"
+            ),
+            spin_rate=(
+                "release_spin_rate",
+                "mean"
+            ),
+            extension=(
+                "release_extension",
+                "mean"
+            ),
+            horizontal_break=(
+                "pfx_x",
+                "mean"
+            ),
+            vertical_break=(
+                "pfx_z",
+                "mean"
+            )
+        )
+        .reset_index()
+    )
+
+    # Count pitches in each game for this pitch type.
+    game_pitch_counts = (
+        selected_pitch_df
+        .groupby("game_pk")
+        .size()
+        .rename("pitch_count")
+        .reset_index()
+    )
+
+    game_level_summary = game_level_summary.merge(
+        game_pitch_counts,
+        on="game_pk",
+        how="left"
+    )
+
+    MIN_PITCHES_PER_GAME = 5
+
+    game_level_summary = game_level_summary[
+        game_level_summary["pitch_count"]
+        >= MIN_PITCHES_PER_GAME
+    ].copy()
+
+    # Convert movement from feet to inches.
+
+    game_level_summary[
+        "horizontal_break"
+    ] *= 12
+
+    game_level_summary[
+        "vertical_break"
+    ] *= 12
+
+    # Calculate normal game-to-game variation
+    # for this pitcher and pitch type.
+
+    game_standard_deviation = {
+        "velocity": game_level_summary[
+            "velocity"
+        ].std(),
+
+        "spin_rate": game_level_summary[
+            "spin_rate"
+        ].std(),
+
+        "extension": game_level_summary[
+            "extension"
+        ].std(),
+
+        "horizontal_break": game_level_summary[
+            "horizontal_break"
+        ].std(),
+
+        "vertical_break": game_level_summary[
+            "vertical_break"
+        ].std()
+    }
+
+    # --------------------------------------
+    # DISPLAY BASELINE
+    # --------------------------------------
+
+    st.markdown(
+        f"### {loaded_season} {pitch_name} Baseline"
+    )
+
+    baseline1, baseline2, baseline3 = st.columns(3)
+
+    baseline1.metric(
+        "Average Velocity",
+        f"{season_baseline['velocity']:.1f} mph"
+    )
+
+    baseline2.metric(
+        "Average Spin Rate",
+        f"{season_baseline['spin_rate']:.0f} rpm"
+    )
+
+    baseline3.metric(
+        "Average Extension",
+        f"{season_baseline['extension']:.1f} ft"
+    )
+
+    baseline4, baseline5 = st.columns(2)
+
+    baseline4.metric(
+        "Horizontal Break",
+        f"{season_baseline['horizontal_break']:.1f} in"
+    )
+
+    baseline5.metric(
+        "Vertical Break",
+        f"{season_baseline['vertical_break']:.1f} in"
+    )
+    st.divider()
+
+    # --------------------------------------
+    # BUILD GAME LIST
+    # --------------------------------------
+
+    games = (
+        selected_pitch_df[
+            [
+                "game_pk",
+                "game_date",
+                "away_team",
+                "home_team"
+            ]
+        ]
+        .drop_duplicates()
+        .sort_values(
+            "game_date",
+            ascending=False
+        )
+    )
+
+    # --------------------------------------
+    # CREATE READABLE GAME LABELS
+    # --------------------------------------
+
+    games["game_label"] = (
+        games["game_date"]
+        .dt.strftime("%b %d, %Y")
+        + " — "
+        + games["away_team"]
+        + " @ "
+        + games["home_team"]
+    )
+
+    game_dictionary = dict(
+        zip(
+            games["game_label"],
+            games["game_pk"]
+        )
+    )
+
+    st.markdown("### Select Game")
+
+    selected_game_label = st.selectbox(
+        "Game",
+        options=list(
+            game_dictionary.keys()
+        ),
+        key="baseline_game"
+    )
+
+    selected_game_pk = (
+        game_dictionary[
+            selected_game_label
+        ]
+    )
+        # --------------------------------------
+    # FILTER SELECTED GAME
+    # --------------------------------------
+
+    selected_game_df = selected_pitch_df[
+        selected_pitch_df["game_pk"]
+        == selected_game_pk
+    ].copy()
+
+    # --------------------------------------
+    # SAMPLE SIZE COUNTS
+    # --------------------------------------
+
+    selected_game_pitch_count = len(selected_game_df)
+
+    baseline_game_count = len(game_level_summary)
+
+    baseline_pitch_count = (
+        game_level_summary["pitch_count"].sum()
+    )
+
+    st.markdown("### Sample Sizes")
+
+    count1, count2, count3 = st.columns(3)
+
+    count1.metric(
+        "Game Pitches",
+        f"{selected_game_pitch_count:,}"
+    )
+
+    count2.metric(
+        "Baseline Games",
+        f"{baseline_game_count:,}"
+    )
+
+    count3.metric(
+        "Baseline Pitches",
+        f"{baseline_pitch_count:,.0f}"
+    )
+
+    st.caption(
+        "Baseline games include only games with at least "
+        f"{MIN_PITCHES_PER_GAME} pitches of the selected type. "
+        "At least 10 qualifying games are required for "
+        "deviation analysis."
+    )
+
+    # --------------------------------------
+    # CALCULATE GAME METRICS
+    # --------------------------------------
+
+    game_metrics = {
+        "velocity": selected_game_df[
+            "release_speed"
+        ].mean(),
+
+        "spin_rate": selected_game_df[
+            "release_spin_rate"
+        ].mean(),
+
+        "extension": selected_game_df[
+            "release_extension"
+        ].mean(),
+
+        "horizontal_break": (
+            selected_game_df["pfx_x"].mean() * 12
+        ),
+
+        "vertical_break": (
+            selected_game_df["pfx_z"].mean() * 12
+        )
+    }
+
+    # --------------------------------------
+    # CALCULATE DIFFERENCES FROM BASELINE
+    # --------------------------------------
+
+    game_differences = {
+        metric: (
+            game_metrics[metric]
+            - season_baseline[metric]
+        )
+        for metric in season_baseline
+    }
+
+    # --------------------------------------
+    # CALCULATE STANDARDIZED DEVIATIONS
+    # --------------------------------------
+
+    # Use the mean of game averages as the
+    # reference for game-level z-scores.
+
+    game_level_means = {
+        metric: game_level_summary[metric].mean()
+        for metric in game_standard_deviation
+    }
+
+    z_scores = {}
+
+    for metric in game_standard_deviation:
+
+        std = game_standard_deviation[metric]
+
+        if pd.notna(std) and std > 0:
+
+            z_scores[metric] = (
+                game_metrics[metric]
+                - game_level_means[metric]
+            ) / std
+
+        else:
+
+            z_scores[metric] = None
+
+    # --------------------------------------
+    # DISPLAY GAME VS BASELINE
+    # --------------------------------------
+
+    st.markdown("### Game vs Season Average")
+
+    compare1, compare2, compare3 = st.columns(3)
+
+    compare1.metric(
+        "Average Velocity",
+        f"{game_metrics['velocity']:.1f} mph",
+        delta=(
+            f"{game_differences['velocity']:+.1f} mph"
+        ),
+    )
+
+    compare2.metric(
+        "Average Spin Rate",
+        f"{game_metrics['spin_rate']:.0f} rpm",
+        delta=(
+            f"{game_differences['spin_rate']:+.0f} rpm"
+        ),
+    )
+
+    compare3.metric(
+        "Average Extension",
+        f"{game_metrics['extension']:.1f} ft",
+        delta=(
+            f"{game_differences['extension']:+.1f} ft"
+        ),
+    )
+
+    compare4, compare5 = st.columns(2)
+
+    compare4.metric(
+        "Horizontal Break",
+        f"{game_metrics['horizontal_break']:.1f} in",
+        delta=(
+            f"{game_differences['horizontal_break']:+.1f} in"
+        ),
+         delta_color="off"
+    )
+
+    compare5.metric(
+        "Vertical Break",
+        f"{game_metrics['vertical_break']:.1f} in",
+        delta=(
+            f"{game_differences['vertical_break']:+.1f} in"
+        ),
+         delta_color="off"
+    )
+
+        # ======================================
+    # GAME DEVIATION ANALYSIS
+    # ======================================
+
+    st.divider()
+
+    st.subheader("Deviation Analysis")
+
+    st.caption(
+        "Z-scores compares selected game's pitch "
+        "characteristics average against "
+        "game averages for the season. Only games with "
+        "at least 5 pitches of this type contribute to the "
+        "average. A minimum of 10 qualifying "
+        "games is required. Values of ±1.0 or greater are "
+        "classified as Notable, and ±2.0 or greater as Unusual. "
+        "These classifications describe statistical variation, "
+        "not necessarily improvements or declines in performance."
+    )
+
+    anomaly_results = []
+
+    metric_labels = {
+        "velocity": "Velocity",
+        "spin_rate": "Spin Rate",
+        "extension": "Release Extension",
+        "horizontal_break": "Horizontal Break",
+        "vertical_break": "Vertical Break"
+    }
+
+    for metric, label in metric_labels.items():
+
+        z = z_scores[metric]
+
+        MIN_BASELINE_GAMES = 10
+
+        selected_game_pitch_count = len(selected_game_df)
+
+        valid_baseline_games = (
+            game_level_summary[metric]
+            .count()
+        )
+
+        if (
+            selected_game_pitch_count < MIN_PITCHES_PER_GAME
+            or valid_baseline_games < MIN_BASELINE_GAMES
+        ):
+
+            status = "Insufficient Sample"
+            z_display = "N/A"
+
+        elif z is None or pd.isna(z):
+
+            status = "Insufficient Variation"
+            z_display = "N/A"
+
+        elif abs(z) >= 2.0:
+
+            status = "Unusual"
+            z_display = f"{z:+.2f}"
+
+        elif abs(z) >= 1.0:
+
+            status = "Notable"
+            z_display = f"{z:+.2f}"
+
+        else:
+
+            status = "Within Range"
+            z_display = f"{z:+.2f}"
+
+        anomaly_results.append({
+            "Metric": label,
+            "Z-Score": z_display,
+            "Status": status
+        })
+
+    st.dataframe(
+        pd.DataFrame(anomaly_results),
+        use_container_width=True,
+        hide_index=True
+    )
