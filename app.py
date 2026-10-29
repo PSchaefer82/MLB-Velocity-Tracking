@@ -434,7 +434,14 @@ load_player = st.sidebar.button(
     use_container_width=True
 )
 
+st.sidebar.divider()
 
+st.sidebar.markdown("### More Baseball Analytics")
+
+st.sidebar.link_button(
+    "⚾ MLB Hitting Analytics",
+    "https://mlb-hitting-analyticstorontobasedproject.streamlit.app/"
+)
 # ==========================================
 # SESSION STATE
 # ==========================================
