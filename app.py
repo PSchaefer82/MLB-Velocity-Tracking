@@ -440,7 +440,7 @@ st.sidebar.markdown("### More Baseball Analytics")
 
 st.sidebar.link_button(
     "⚾ MLB Hitting Analytics",
-    "https://mlb-hitting-analyticstorontobasedproject.streamlit.app/"
+    "https://mlb-hitting-analytics-torontobasedproject.streamlit.app/"
 )
 # ==========================================
 # SESSION STATE
